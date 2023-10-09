@@ -5,6 +5,49 @@
 
 (in-package :com.craftinginterpreters.lox)
 
+(deftype token-type ()
+  '(member
+    ;; Single-char tokens
+    'LEFT-PAREN 'RIGHT-PAREN 'LEFT-BRACE 'RIGHT-BRACE
+    'COMMA 'DOT 'MINUS 'PLUS 'SEMICOLON 'SLASH 'STAR
+
+    ;; One or two char tokens
+    'BANG 'BANG-EQUAL
+    'EQUAL 'EQUAL-EQUAL
+    'GREATER 'GREATER-EQUAL
+    'LESS 'LESS-EQUAL
+
+    ;; Literals
+    'IDENTIFIER 'STRING 'NUMBER
+
+    ;; Keywords
+    'AND 'CLASS 'ELSE 'FALSE 'FUN 'FOR 'IF 'NIL 'OR
+    'PRINT 'RETURN 'SUPER 'THIS 'TRUE 'VAR 'WHILE
+
+    'EOF
+    ))
+
+(defclass token ()
+  ((type
+    :initarg :type
+    :type 'token-type)
+   (lexeme :initarg :lexeme)
+   (literal :initarg :literal)
+   (line :initarg :line)))
+
+;; TODO: generic if necessary
+(defun ->string (token)
+  (format nil "~A ~A ~A"
+          (slot-value token 'type)
+          (slot-value token 'lexeme)
+          (slot-value token 'literal)))
+
+(->string
+  (make-instance 'token
+                :type 'left-paren
+                :lexeme "("
+                :literal 10))
+
 (defparameter *had-error* nil)
 
 (defun read-file (path)

@@ -1,5 +1,10 @@
 ;; Interpreter for Part II: A tree-walk interpreter
 
+(defpackage :com.craftinginterpreters.lox
+  (:use :common-lisp))
+
+(in-package :com.craftinginterpreters.lox)
+
 (defparameter *had-error* nil)
 
 (defun read-file (path)

@@ -114,6 +114,16 @@
   (with-slots (start current source line) scn
     (>= current (length source))))
 
+(defun advance (scn)
+  (with-slots (start current source line) scn
+    (char source (inc current))))
+
+(defun peek (scn)
+  (with-slots (current source) scn
+    (if (is-at-end scn)
+        #\Nul
+        (char source current))))
+
 (defun scan-token (c scn)
   (with-slots (start current source line) scn
     (flet ((match (expected)
@@ -122,7 +132,13 @@
                   (equal expected (char source current)))
 
                  (progn
-                   (inc current) t))))
+                   (inc current) t)))
+
+           (consume-until (c)
+             (loop while
+                   (not (or (equal c (peek scn))
+                            (is-at-end scn)))
+                   do (advance scn))))
 
       (case c
         (#\( 'LEFT-PAREN)
@@ -142,6 +158,18 @@
         (#\< (if (match #\=) 'LESS-EQUAL 'LESS))
         (#\> (if (match #\=) 'GREATER-EQUAL 'GREATER))
 
+        ;; comments or division
+        (#\/ (if (match #\/)
+                 (consume-until #\Newline)
+                 'SLASH))
+
+        ;; skip over whitespace
+        (#\Space nil)
+        (#\Return nil)
+        (#\Tab nil)
+        (#\Newline (progn (inc line) nil))
+
+        (t (lox-error line "Unexpected character."))
         ))))
 
 (defun inc (place)
@@ -150,12 +178,9 @@
 ;; does Scanner really need to be a class?
 (defmethod scan-tokens ((scn scanner))
   (with-slots (start current source line) scn
-    (flet ((advance () (char source (inc current)))
-
-           ;; this is rather a "make-token"
+    (flet (;; this is rather a "make-token"
            (add-token (type &optional literal)
-             (if (not type)
-                 (lox-error line "Unexpected character.")
+             (if type
                  (make-instance
                   'token
                   :type type
@@ -169,7 +194,7 @@
              ;; We are at the beginning of the next lexeme
              (progn
                (setq start current)
-               (add-token (scan-token (advance) scn))))
+               (add-token (scan-token (advance scn) scn))))
        (make-eof line)))))
 
 ;; Scanner.java end

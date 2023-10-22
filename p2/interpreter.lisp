@@ -93,4 +93,85 @@
 (defun lox-error (line message)
   (lox-report line "" message))
 
+;; Scanner.java start
+
+(defclass scanner ()
+  ((tokens :type 'list :initarg :tokens) ; list of 'token
+   (source :initarg :source)
+   ;; start and current are offsets that index into the string
+   (start :initform 0)                  ; first char in the lexeme being scanned
+   (current :initform 0)                ; char currently being considered
+   (line :initform 1)))                 ; what (source) line current is on
+
+(defun make-eof (line)
+  (make-instance 'token
+                 :type 'EOF
+                 :lexeme ""
+                 :literal nil
+                 :line line))
+
+(defun is-at-end (scn)
+  (with-slots (start current source line) scn
+    (>= current (length source))))
+
+(defun scan-token (c scn)
+  (with-slots (start current source line) scn
+    (flet ((match (expected)
+             (if (and
+                  (not (is-at-end scn))
+                  (equal expected (char source current)))
+
+                 (progn
+                   (inc current) t))))
+
+      (case c
+        (#\( 'LEFT-PAREN)
+        (#\) 'RIGHT-PAREN)
+        (#\{ 'LEFT-BRACE)
+        (#\} 'RIGHT-BRACE)
+        (#\, 'COMMA)
+        (#\. 'DOT)
+        (#\- 'MINUS)
+        (#\+ 'PLUS)
+        (#\; 'SEMICOLON)
+        (#\* 'STAR)
+
+        ;; two-characters lexemes
+        (#\! (if (match #\=) 'BANG-EQUAL 'BANG))
+        (#\= (if (match #\=) 'EQUAL-EQUAL 'EQUAL))
+        (#\< (if (match #\=) 'LESS-EQUAL 'LESS))
+        (#\> (if (match #\=) 'GREATER-EQUAL 'GREATER))
+
+        ))))
+
+(defun inc (place)
+  (setq place (+ 1 place)))
+
+;; does Scanner really need to be a class?
+(defmethod scan-tokens ((scn scanner))
+  (with-slots (start current source line) scn
+    (flet ((advance () (char source (inc current)))
+
+           ;; this is rather a "make-token"
+           (add-token (type &optional literal)
+             (if (not type)
+                 (lox-error line "Unexpected character.")
+                 (make-instance
+                  'token
+                  :type type
+                  :lexeme (subseq source start current)
+                  :literal literal
+                  :line line))))
+
+      (append
+       (loop until (is-at-end scn)
+             collect
+             ;; We are at the beginning of the next lexeme
+             (progn
+               (setq start current)
+               (add-token (scan-token (advance) scn))))
+       (make-eof line)))))
+
+;; Scanner.java end
+
 (main)

@@ -124,6 +124,21 @@
         #\Nul
         (char source current))))
 
+(defun consume-until (scn c &optional extra)
+  (loop while
+        (not (or (equal c (peek scn))
+                 (is-at-end scn)))
+        do (progn
+             (if extra (funcall extra))
+             (advance scn))))
+
+(defun scan-string (scn)
+  (with-slots (line) scn
+    (consume-until scn #\"
+                   (lambda ()
+                     (if (equal #\Newline (peek scn))
+                         (inc line))))))
+
 (defun scan-token (c scn)
   (with-slots (start current source line) scn
     (flet ((match (expected)
@@ -132,13 +147,7 @@
                   (equal expected (char source current)))
 
                  (progn
-                   (inc current) t)))
-
-           (consume-until (c)
-             (loop while
-                   (not (or (equal c (peek scn))
-                            (is-at-end scn)))
-                   do (advance scn))))
+                   (inc current) t))))
 
       (case c
         (#\( 'LEFT-PAREN)
@@ -160,7 +169,7 @@
 
         ;; comments or division
         (#\/ (if (match #\/)
-                 (consume-until #\Newline)
+                 (consume-until scn #\Newline)
                  'SLASH))
 
         ;; skip over whitespace
@@ -168,6 +177,12 @@
         (#\Return nil)
         (#\Tab nil)
         (#\Newline (progn (inc line) nil))
+
+        ;; string literals
+        ;; SCAN-STRING returns a tuple ('STRING value)
+        ;; `value' is then used as the `literal' param
+        ;; of ADD-TOKEN
+        (#\" (scan-string scn))
 
         (t (lox-error line "Unexpected character."))
         ))))
@@ -194,7 +209,8 @@
              ;; We are at the beginning of the next lexeme
              (progn
                (setq start current)
-               (add-token (scan-token (advance scn) scn))))
+               (apply 'add-token
+                (scan-token (advance scn) scn))))
        (make-eof line)))))
 
 ;; Scanner.java end

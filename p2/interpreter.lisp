@@ -124,6 +124,12 @@
         #\Nul
         (char source current))))
 
+(defun peek-next (scn)
+  (with-slots (current source) scn
+    (if (>= (+ 1 current) (length source))
+        #\Nul
+        (char source (+ 1 current)))))
+
 (defun consume-until (scn c &optional extra)
   (loop while
         (not (or (equal c (peek scn))
@@ -133,13 +139,57 @@
              (advance scn))))
 
 (defun scan-string (scn)
-  (with-slots (line) scn
+  (with-slots (source line start current) scn
     (consume-until scn #\"
                    (lambda ()
                      (if (equal #\Newline (peek scn))
-                         (inc line))))))
+                         (inc line))))
+
+    (if (is-at-end scn)
+        ;; we're missing the closing "
+        (progn (lox-error line "Unterminated string.")
+               (return-from scan-string nil)))
+
+    ;; consume the closing "
+    (advance scn)
+
+    ;; Return the token + without-quotes string value
+    (list
+     'STRING
+     (subseq source (- start 1) (- current 1)))))
+
+(defun is-digit (c)
+  (and
+   (>= (char-code c) (char-code #\0))
+   (<= (char-code c) (char-code #\9))))
+
+(defun parse-double (str)
+  ;; We should only get a number literal here.
+  ;; Something like: 420.69
+  ;; READ-FROM-STRING will do the conversion.
+  (read-from-string str))
+
+(defun scan-number (scn)
+  (loop while (is-digit (peek scn))
+        do (advance scn))
+
+  (if (and (equal (peek scn) #\.)
+           (is-digit (peek-next scn)))
+
+      (progn (advance scn)
+             (loop while (is-digit (peek scn))
+                   do (advance scn))))
+
+  (with-slots (source start current)
+      (list 'NUMBER
+            (parse-double (subseq source start current)))))
 
 (defun scan-token (c scn)
+  (if (is-digit c)
+      ;; nope out if it's a digit, instead of having
+      ;; a case for each possible digit
+      (return-from scan-token (scan-number scn)))
+
   (with-slots (start current source line) scn
     (flet ((match (expected)
              (if (and

@@ -117,7 +117,7 @@
 
 (defun advance (scn)
   (with-slots (start current source line) scn
-    (char source (inc current))))
+    (char source (- (incf current) 1))))
 
 (defun peek (scn)
   (with-slots (current source) scn
@@ -144,7 +144,7 @@
     (consume-until scn #\"
                    (lambda ()
                      (if (equal #\Newline (peek scn))
-                         (inc line))))
+                         (incf line))))
 
     (if (is-at-end scn)
         ;; we're missing the closing "
@@ -256,7 +256,7 @@
                   (equal expected (char source current)))
 
                  (progn
-                   (inc current) t))))
+                   (incf current) t))))
 
       (case c
         (#\( 'LEFT-PAREN)
@@ -285,7 +285,7 @@
         (#\Space nil)
         (#\Return nil)
         (#\Tab nil)
-        (#\Newline (progn (inc line) nil))
+        (#\Newline (progn (incf line) nil))
 
         ;; string literals
         ;; SCAN-STRING returns a tuple ('STRING value)
@@ -295,9 +295,6 @@
 
         (t (lox-error line "Unexpected character."))
         ))))
-
-(defun inc (place)
-  (setq place (+ 1 place)))
 
 ;; does Scanner really need to be a class?
 (defmethod scan-tokens ((scn scanner))

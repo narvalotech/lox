@@ -1,4 +1,5 @@
 ;; Interpreter for Part II: A tree-walk interpreter
+(declaim (optimize (speed 0) (space 0) (debug 3)))
 
 (defpackage :com.craftinginterpreters.lox
   (:use :common-lisp))
@@ -303,6 +304,7 @@
   (with-slots (start current source line) scn
     (flet (;; this is rather a "make-token"
            (add-token (type &optional literal)
+             (format t "add-token: type ~A literal ~A~%" type literal)
              (if type
                  (make-instance
                   'token
@@ -323,4 +325,13 @@
 
 ;; Scanner.java end
 
-(main)
+(trace scan-token)
+(trace scan-identifier)
+(trace dict-getval)
+(trace is-alphanumeric)
+(trace is-at-end)
+(trace advance)
+(run "print")
+(run "1 + (2 * 3)")
+
+;; (main)

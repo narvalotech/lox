@@ -60,14 +60,11 @@
             collect line)))
 
 (defun run (str)
-  ;; (let ((tokens (scan-tokens str)))
-  ;;   (loop for token in tokens do
-  ;;         (format t "Token: ~A" token)))
-
-  (if (equal str "err")
-      (lox-error 1 "ohno"))
-
-  (format t "Running script: ~A~%" str))
+  (let* ((scanner (make-instance 'scanner :source str))
+         (tokens (scan-tokens scanner)))
+    (break)
+    (loop for token in tokens do
+      (format t "Token: ~A" token))))
 
 (defun run-file (path)
   (run (read-file path))
@@ -182,7 +179,7 @@
              (loop while (is-digit (peek scn))
                    do (advance scn))))
 
-  (with-slots (source start current)
+  (with-slots (source start current) scn
       (list 'NUMBER
             (parse-double (subseq source start current)))))
 
@@ -207,28 +204,28 @@
 
 (defparameter *reserved-keywords*
   (make-dict
-   '(("and" 'AND)
-     ("class" 'CLASS)
-     ("else" 'ELSE)
-     ("false" 'FALSE)
-     ("for" 'FOR)
-     ("fun" 'FUN)
-     ("if" 'IF)
-     ("nil" 'NIL)
-     ("or" 'OR)
-     ("print" 'PRINT)
-     ("return" 'RETURN)
-     ("super" 'SUPER)
-     ("this" 'THIS)
-     ("true" 'TRUE)
-     ("var" 'VAR)
-     ("while" 'WHILE)
+   '(("and" AND)
+     ("class" CLASS)
+     ("else" ELSE)
+     ("false" FALSE)
+     ("for" FOR)
+     ("fun" FUN)
+     ("if" IF)
+     ("nil" NIL)
+     ("or" OR)
+     ("print" PRINT)
+     ("return" RETURN)
+     ("super" SUPER)
+     ("this" THIS)
+     ("true" TRUE)
+     ("var" VAR)
+     ("while" WHILE)
      )))
 
 (defun dict-getval (dict key)
   (gethash key dict))
 
-(defun scan-identifer (scn)
+(defun scan-identifier (scn)
   ;; consume identifier from source
   (loop while (is-alphanumeric (peek scn))
         do (advance scn))
@@ -301,7 +298,7 @@
 (defmethod scan-tokens ((scn scanner))
   (with-slots (start current source line) scn
     (flet (;; this is rather a "make-token"
-           (add-token (type &optional literal)
+           (add-token (&optional type literal)
              (format t "add-token: type ~A literal ~A~%" type literal)
              (if type
                  (make-instance
@@ -312,13 +309,15 @@
                   :line line))))
 
       (append
-       (loop until (is-at-end scn)
-             collect
-             ;; We are at the beginning of the next lexeme
-             (progn
-               (setq start current)
-               (apply 'add-token
-                (scan-token (advance scn) scn))))
+        (loop until (is-at-end scn)
+              collect
+              ;; We are at the beginning of the next lexeme
+              (progn
+                (setq start current)
+                (let ((scanned (scan-token (advance scn) scn)))
+                  (if (listp scanned)
+                      (add-token (car scanned) (cadr scanned))
+                      (add-token scanned)))))
        (make-eof line)))))
 
 ;; Scanner.java end

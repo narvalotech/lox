@@ -325,12 +325,11 @@
 ;; Scanner.java end
 
 (trace scan-token)
-(trace scan-identifier)
-(trace dict-getval)
-(trace is-alphanumeric)
 (trace is-at-end)
 (trace advance)
-(run "print")
 (run "1 + (2 * 3)")
+(run "print")
+;; FIXME: fix the quote escaping
+(run "print \"Hello Lox\";")
 
 ;; (main)

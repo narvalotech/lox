@@ -184,11 +184,69 @@
       (list 'NUMBER
             (parse-double (subseq source start current)))))
 
+(defun is-alpha (c)
+  (or
+   (and
+    (>= (char-code c) (char-code #\a))
+    (<= (char-code c) (char-code #\z)))
+   (and
+    (>= (char-code c) (char-code #\A))
+    (<= (char-code c) (char-code #\Z)))
+   (equal (char-code c) (char-code #\_))))
+
+(defun is-alphanumeric (c)
+  (or (is-alpha c) (is-digit c)))
+
+(defun make-dict (kvs)
+  (let ((hash (make-hash-table :test 'equalp)))
+    (dolist (kv kvs)
+      (setf (gethash (car kv) hash) (cadr kv)))
+    hash))
+
+(defparameter *reserved-keywords*
+  (make-dict
+   '(("and" 'AND)
+     ("class" 'CLASS)
+     ("else" 'ELSE)
+     ("false" 'FALSE)
+     ("for" 'FOR)
+     ("fun" 'FUN)
+     ("if" 'IF)
+     ("nil" 'NIL)
+     ("or" 'OR)
+     ("print" 'PRINT)
+     ("return" 'RETURN)
+     ("super" 'SUPER)
+     ("this" 'THIS)
+     ("true" 'TRUE)
+     ("var" 'VAR)
+     ("while" 'WHILE)
+     )))
+
+(defun dict-getval (dict key)
+  (gethash key dict))
+
+(defun scan-identifer (scn)
+  ;; consume identifier from source
+  (loop while (is-alphanumeric (peek scn))
+        do (advance scn))
+
+  (with-slots (start current source) scn
+    (let* ((text (subseq source start current))
+           (type (dict-getval *reserved-keywords* text)))
+      (if type
+          type
+          'IDENTIFIER))))
+
 (defun scan-token (c scn)
   (if (is-digit c)
       ;; nope out if it's a digit, instead of having
       ;; a case for each possible digit
       (return-from scan-token (scan-number scn)))
+
+  (if (is-alpha c)
+      ;; do the same for identifiers
+      (return-from scan-token (scan-identifier scn)))
 
   (with-slots (start current source line) scn
     (flet ((match (expected)

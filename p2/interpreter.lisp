@@ -309,16 +309,18 @@
                   :line line))))
 
       (append
-        (loop until (is-at-end scn)
-              collect
-              ;; We are at the beginning of the next lexeme
-              (progn
-                (setq start current)
-                (let ((scanned (scan-token (advance scn) scn)))
-                  (if (listp scanned)
-                      (add-token (car scanned) (cadr scanned))
-                      (add-token scanned)))))
-       (make-eof line)))))
+       (loop until (is-at-end scn)
+             with token do
+               (setf token
+                     (progn
+                       ;; We are at the beginning of the next lexeme
+                       (setq start current)
+                       (let ((scanned (scan-token (advance scn) scn)))
+                         (if (listp scanned)
+                             (add-token (car scanned) (cadr scanned))
+                             (add-token scanned)))))
+             when token collect token)
+       (list (make-eof line))))))
 
 ;; Scanner.java end
 

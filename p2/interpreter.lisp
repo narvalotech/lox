@@ -332,4 +332,62 @@
 ;; FIXME: fix the quote escaping
 (run "print \"Hello Lox\";")
 
-;; (main)
+;; Parser start
+
+;; Classes based on `expr' are to enable scanner and
+;; parser to communicate.
+(defclass expr () ()
+  (:documentation "Superclass for all possible LOX expressions"))
+
+(defun as-keyword (sym) (intern (string sym) :keyword))
+(defun slot->defclass-slot (spec)
+  (let ((name (first spec))
+        (class (second spec)))
+    (if class
+        `(,name
+          :initarg ,(as-keyword name)
+          :initform (make-instance (quote ,class)))
+        `(,name :initarg ,(as-keyword name)))))
+
+(defun def-expr (name slots)
+  `(defclass ,name (expr)
+     ,(mapcar #'slot->defclass-slot slots)))
+
+(defparameter *test2*
+  '(binary
+    ((left expr)
+     (operator token)
+     (right expr)
+     (i-have-no-class))))
+(apply #'def-expr *test2*)
+
+(defmacro def-exprs (typelist)
+  "Create `expr' subclasses from a list"
+  `(progn
+     ,@(mapcar
+        (lambda (l) (apply #'def-expr l))
+        typelist)))
+
+;; Generate the classes
+(def-exprs
+    ((binary
+      ((left expr)
+       (operator token)
+       (right expr)))
+
+     (grouping
+      ((expression expr)))
+
+     (literal ((value)))
+
+     (unary
+      ((operator token)
+       (expr right)))))
+
+;; `C-c I' to test if it works
+;; (make-instance 'grouping)
+
+
+
+
+;; Parser end

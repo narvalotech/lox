@@ -382,12 +382,57 @@
 
      (unary
       ((operator token)
-       (expr right)))))
+       (right expr)))))
 
 ;; `C-c I' to test if it works
 ;; (make-instance 'grouping)
 
+;; I need to implement the visitor interface b/c book is written for java
+;; I don't know enough of the impl to take a decision right now..
+;; My gut tells me I won't need this pattern at all and I can just use
+;; generic functions. I guess we'll see soon enough.
 
+(defgeneric print-ast (expr)
+  (:documentation "Print the Abstract Syntax Tree of an expression."))
 
+(defun parenthesize (name &rest exprs)
+  (with-output-to-string (builder)
+    (format builder "(~A" name)
+    (loop for expr in exprs do
+      (progn
+        (write-string " " builder)
+        (write-string (print-ast expr) builder)))
+    (write-string ")" builder)
+    builder))
+
+(defmethod print-ast ((expr binary))
+  (with-slots (left operator right) expr
+    (parenthesize (slot-value operator 'lexeme) left right)))
+
+(defmethod print-ast ((expr grouping))
+  (parenthesize "group" (slot-value expr 'expression)))
+
+(defmethod print-ast ((expr literal))
+  (with-slots (value) expr
+    ;; Do I really need this?
+    (if (equal value nil)
+        "nil"
+        (format nil "~A" value))))
+
+(defmethod print-ast ((expr unary))
+  (with-slots (operator right) expr
+    (parenthesize (slot-value operator 'lexeme) right)))
+
+;; Typing is hard, okay
+(defmacro mi (&rest args)
+  `(make-instance ,@args))
+
+(format nil "~A"
+        (print-ast (mi 'binary
+                       :left (mi 'unary
+                                 :operator (mi 'token :type 'MINUS :lexeme "-" :literal nil :line 1)
+                                 :right (mi 'literal :value 123))
+                       :operator (mi 'token :type 'STAR :lexeme "*" :literal nil :line 1)
+                       :right (mi 'grouping :expression (mi 'literal :value 45.67)))))
 
 ;; Parser end

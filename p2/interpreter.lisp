@@ -332,7 +332,7 @@
 ;; FIXME: fix the quote escaping
 (run "print \"Hello Lox\";")
 
-;; Parser start
+;; Expr.java start
 
 ;; Classes based on `expr' are to enable scanner and
 ;; parser to communicate.
@@ -435,4 +435,122 @@
                        :operator (mi 'token :type 'STAR :lexeme "*" :literal nil :line 1)
                        :right (mi 'grouping :expression (mi 'literal :value 45.67)))))
 
-;; Parser end
+;; Expr.java end
+;; (also AstPrinter.java)
+
+;; Parser.java start
+
+(defclass parser ()
+  ((tokens :initarg :tokens
+           :initform '())
+   (current :initarg :current
+            :initform 0)))
+
+;; TODO: put all that stuff in its own package, remove the
+;; `parser-' prefixes.
+
+;; Each method for parsing a grammar rule returns a syntax
+;; tree for that rule. When the body contains a nonterminal
+;; (ref to another rule), we call that other rule's method.
+
+(defun parser-peek (prs)
+  (with-slots (tokens current) prs
+    (nth current tokens)))
+
+(defun parser-previous (prs)
+  (with-slots (tokens current) prs
+    (nth (- current 1) tokens)))
+
+(defun parser-is-at-end (prs)
+  (equal 'EOF (slot-value (parser-peek prs) 'type)))
+
+(defun parser-advance (prs)
+  (if (not (parser-is-at-end prs))
+      (incf (slot-value prs 'current)))
+  ;; why can't we just save the prev value before incf?
+  (parser-previous prs))
+
+(defun parser-check (type prs)
+  ;; `if' returns `nil' when cond not true
+  (if (not (parser-is-at-end prs))
+      (equal type (slot-value (parser-peek prs) 'type))))
+
+(defun parser-match (types prs)
+  (loop for type in types do
+    (if (parser-check type prs)
+        (parser-advance prs)
+        (return-from parser-match t)))
+  nil)
+
+(defun rule-expression (prs)
+  (rule-equality prs))
+
+(defun rule-primary (prs)
+  (flet ((match (&rest types) (parser-match types prs))
+         (literal (value) (make-instance 'literal :value value)))
+    (cond
+      ;; TODO: do I need to distinguish between false and nil?
+      ((match 'FALSE) (literal nil))
+      ((match 'TRUE) (literal t))
+      ((match 'NIL) (literal nil))
+      ((match 'NUMBER 'STRING)
+       (literal (slot-value (parser-previous prs) 'literal)))
+      ((match 'LEFT-PAREN)
+       (let ((expression (rule-expression prs)))
+         (consume 'RIGHT-PAREN "Expect ')' after expression." prs)
+         (make-instance 'grouping :expression expression))))))
+
+(defun rule-unary (prs)
+  (if (parser-match (list 'BANG 'MINUS) prs)
+      (make-instance 'unary
+                     :operator (parser-previous prs)
+                     :right (rule-unary prs)))
+  (rule-primary prs))
+
+;; TODO: make a helper method for all this redundant code in
+;; the binary rules/operators.
+
+(defun rule-factor (prs)
+  (let ((expression (parser-term prs)))
+    (loop while
+          (parser-match (list 'SLASH 'STAR) prs) do
+            (setq expression
+                  (make-instance 'binary
+                                 :left expression
+                                 :operator (parser-previous prs)
+                                 :right (rule-unary prs))))
+    expression))
+
+(defun rule-term (prs)
+  (let ((expression (parser-term prs)))
+    (loop while
+          (parser-match (list 'MINUS 'PLUS) prs) do
+            (setq expression
+                  (make-instance 'binary
+                                 :left expression
+                                 :operator (parser-previous prs)
+                                 :right (rule-factor prs))))
+    expression))
+
+(defun rule-comparison (prs)
+  (let ((expression (parser-term prs)))
+    (loop while
+          (parser-match (list 'GREATER 'GREATER-EQUAL 'LESS 'LESS-EQUAL) prs) do
+            (setq expression
+                  (make-instance 'binary
+                                 :left expression
+                                 :operator (parser-previous prs)
+                                 :right (rule-term prs))))
+    expression))
+
+(defun rule-equality (prs)
+  (let ((expression (make-instance 'expr)))
+    (loop while (parser-match (list 'BANG-EQUAL 'EQUAL-EQUAL) prs) do
+      (setq expression
+            (make-instance 'binary
+                           :left expression
+                           :operator (parser-previous prs)
+                           :right (rule-comparison prs))))
+    expression))
+
+;; Parser.java end

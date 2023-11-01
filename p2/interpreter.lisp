@@ -61,10 +61,11 @@
 
 (defun run (str)
   (let* ((scanner (make-instance 'scanner :source str))
-         (tokens (scan-tokens scanner)))
-    (break)
-    (loop for token in tokens do
-      (format t "Token: ~A" token))))
+         (tokens (scan-tokens scanner))
+         (parser (make-instance 'parser :tokens tokens))
+         (expression (parser-parse parser)))
+    (if (not *had-error*)
+        (format t "parsed: ~%~A" (print-ast expression)))))
 
 (defun run-file (path)
   (run (read-file path))
@@ -84,7 +85,7 @@
       (run-prompt)))
 
 (defun lox-report (line where message)
-  (format t "[line ~A] Error~A: ~A~%"
+  (format t "[line ~A] Error ~A: ~A~%"
           line where message)
   (setq *had-error* t))
 
@@ -478,6 +479,50 @@
 (defun rule-expression (prs)
   (rule-equality prs))
 
+(defun parser-synchronize (prs)
+  (parser-advance prs)
+
+  ;; Discard tokens until the next statement boundary
+  (loop while (not (parser-is-at-end prs)) do
+    ;; Wait until we hit a semicolon
+    (if (equal (slot-value (parser-previous prs) 'type) 'SEMICOLON)
+        (return-from parser-synchronize))
+
+    ;; Wait until the next token is a statement
+    (if (member (slot-value (parser-peek prs) 'type)
+                '(CLASS FUN VAR FOR IF WHILE PRINT RETURN))
+        (return-from parser-synchronize))
+
+    (parser-advance prs)))
+
+(define-condition parser-error-condition (error)
+  ((token :initarg :token :reader text)
+   (message :initarg :message :reader text)))
+
+(defun parser-error (token message)
+  (with-slots (type line lexeme) token
+    (if (equal type 'EOF)
+        (lox-report line " at end" message)
+        (lox-report line (format nil "at '~A'" lexeme) message)))
+
+  ;; We throw the error when we want to synchronize. We
+  ;; catch it higher in the call-stack, at the level of the
+  ;; grammar rule we are synchronizing to.
+  (error 'parser-error-condition
+         :token token
+         :message message))
+
+(defun parser-consume (type err-str prs)
+  (if (parser-check type prs)
+      (parser-advance prs)
+      (parser-error type err-str)))
+
+(defun parser-parse (prs)
+  (handler-case
+      (rule-expression prs)
+    ;; we could use RESTART-CASE instead
+    (parser-error-condition () nil)))
+
 (defun rule-primary (prs)
   (flet ((match (&rest types) (parser-match types prs))
          (literal (value) (make-instance 'literal :value value)))
@@ -490,8 +535,9 @@
        (literal (slot-value (parser-previous prs) 'literal)))
       ((match 'LEFT-PAREN)
        (let ((expression (rule-expression prs)))
-         (consume 'RIGHT-PAREN "Expect ')' after expression." prs)
-         (make-instance 'grouping :expression expression))))))
+         (parser-consume 'RIGHT-PAREN "Expect ')' after expression." prs)
+         (make-instance 'grouping :expression expression)))
+      (t (parser-error (parser-peek prs) "Expect expression.")))))
 
 (defun rule-unary (prs)
   (if (parser-match (list 'BANG 'MINUS) prs)
@@ -554,6 +600,7 @@
 (trace advance)
 (run "1 + (2 * 3)")
 (run "2 / 5 + 2 * 3")
+(run "2 +/ 3")
 (run "print")
 ;; FIXME: fix the quote escaping
 (run "print \"Hello Lox\";")

@@ -324,14 +324,6 @@
 
 ;; Scanner.java end
 
-(trace scan-token)
-(trace is-at-end)
-(trace advance)
-(run "1 + (2 * 3)")
-(run "print")
-;; FIXME: fix the quote escaping
-(run "print \"Hello Lox\";")
-
 ;; Expr.java start
 
 ;; Classes based on `expr' are to enable scanner and
@@ -555,3 +547,13 @@
     expression))
 
 ;; Parser.java end
+
+;; tests
+(trace scan-token)
+(trace is-at-end)
+(trace advance)
+(run "1 + (2 * 3)")
+(run "2 / 5 + 2 * 3")
+(run "print")
+;; FIXME: fix the quote escaping
+(run "print \"Hello Lox\";")

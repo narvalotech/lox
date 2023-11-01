@@ -478,8 +478,9 @@
 (defun parser-match (types prs)
   (loop for type in types do
     (if (parser-check type prs)
-        (parser-advance prs)
-        (return-from parser-match t)))
+        (progn
+          (parser-advance prs)
+          (return-from parser-match t))))
   nil)
 
 (defun rule-expression (prs)
@@ -511,7 +512,7 @@
 ;; the binary rules/operators.
 
 (defun rule-factor (prs)
-  (let ((expression (parser-term prs)))
+  (let ((expression (rule-unary prs)))
     (loop while
           (parser-match (list 'SLASH 'STAR) prs) do
             (setq expression
@@ -522,7 +523,7 @@
     expression))
 
 (defun rule-term (prs)
-  (let ((expression (parser-term prs)))
+  (let ((expression (rule-factor prs)))
     (loop while
           (parser-match (list 'MINUS 'PLUS) prs) do
             (setq expression
@@ -533,7 +534,7 @@
     expression))
 
 (defun rule-comparison (prs)
-  (let ((expression (parser-term prs)))
+  (let ((expression (rule-term prs)))
     (loop while
           (parser-match (list 'GREATER 'GREATER-EQUAL 'LESS 'LESS-EQUAL) prs) do
             (setq expression
@@ -544,7 +545,7 @@
     expression))
 
 (defun rule-equality (prs)
-  (let ((expression (make-instance 'expr)))
+  (let ((expression (rule-comparison prs)))
     (loop while (parser-match (list 'BANG-EQUAL 'EQUAL-EQUAL) prs) do
       (setq expression
             (make-instance 'binary

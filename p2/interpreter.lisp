@@ -165,7 +165,7 @@
     ;; Return the token + without-quotes string value
     (list
      'STRING
-     (subseq source (- start 1) (- current 1)))))
+     (subseq source (+ start 1) (- current 1)))))
 
 (defun is-digit (c)
   (and
@@ -709,7 +709,6 @@
 (run "2 / 5 + 2 * 3")
 (run "2 +/ 3")
 (run "print")
-;; FIXME: fix the quote escaping
 (setq *had-runtime-error* nil)
 (setq *had-error* nil)
 (run "print \"Hello Lox\";")

@@ -124,7 +124,7 @@
 
 (defun advance (scn)
   (with-slots (start current source line) scn
-    (sleep .1)
+    (sleep .01)
     (char source (- (incf current) 1))))
 
 (defun peek (scn)

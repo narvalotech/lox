@@ -50,6 +50,7 @@
                 :literal 10))
 
 (defparameter *had-error* nil)
+(defparameter *had-runtime-error* nil)
 
 (defun read-file (path)
   (with-open-file
@@ -64,33 +65,41 @@
          (tokens (scan-tokens scanner))
          (parser (make-instance 'parser :tokens tokens))
          (expression (parser-parse parser)))
+    ;; do we need to handle *had-runtime-error*?
+    ;; TODO: also make an `interpreter' instance like the java impl.
     (if (not *had-error*)
-        (format t "parsed: ~%~A" (print-ast expression)))))
+        (format t "~%~A -> ~A~%"
+                (print-ast expression)
+                (interpret expression)))))
 
 (defun run-file (path)
   (run (read-file path))
-  (if *had-error*                       ; return codes
-      65
-      0))
+  (cond
+    (*had-error* 65)
+    (*had-runtime-error* 70)
+    (t 0)))
 
 (defun run-prompt ()
   (loop for line = (read-line *standard-input* nil)
         until (eq line nil) do
               (progn (run line)
-                     (setq *had-error* nil))))
+                     (setq *had-error* nil)
+                     (setq *had-runtime-error* nil))))
 
 (defun main (&optional filepath)
   (if filepath
       (run-file filepath)
       (run-prompt)))
 
-(defun lox-report (line where message)
+(defun lox-report (type line where message)
   (format t "[line ~A] Error ~A: ~A~%"
           line where message)
-  (setq *had-error* t))
+  (case type
+    ('LOX-RUNTIME-ERROR (setq *had-runtime-error* t))
+    ('LOX-ERROR (setq *had-error* t))))
 
 (defun lox-error (line message)
-  (lox-report line "" message))
+  (lox-report 'LOX-ERROR line "" message))
 
 ;; Scanner.java start
 
@@ -502,8 +511,8 @@
 (defun parser-error (token message)
   (with-slots (type line lexeme) token
     (if (equal type 'EOF)
-        (lox-report line " at end" message)
-        (lox-report line (format nil "at '~A'" lexeme) message)))
+        (lox-report 'LOX-ERROR line " at end" message)
+        (lox-report 'LOX-ERROR line (format nil "at '~A'" lexeme) message)))
 
   ;; We throw the error when we want to synchronize. We
   ;; catch it higher in the call-stack, at the level of the
@@ -594,13 +603,113 @@
 
 ;; Parser.java end
 
+;; Interpreter.java start
+(defun is-truthy (obj)
+  ;; We don't have a difference between `nil' and `null'.
+  (if obj t nil))
+
+(defgeneric evaluate (expr)
+  (:documentation "Return the result of evaluating expr"))
+
+(defmethod evaluate ((expr literal))
+  (slot-value expr 'value))
+
+(defmethod evaluate ((expr grouping))
+  (evaluate (slot-value expr 'expression)))
+
+(define-condition lox-runtime-error-condition (error)
+  ((token :initarg :token :reader text)
+   (message :initarg :message :reader text)))
+
+(defun lox-runtime-error (token message)
+  (with-slots (type line) token
+    (lox-report 'LOX-RUNTIME-ERROR line "" "runtime-error"))
+
+  (error 'lox-runtime-error-condition
+         :token token
+         :message message))
+
+(defun check-number-operand (operator operand)
+  (if (not (numberp operand))
+      (lox-runtime-error operator "Operand must be a number.")))
+
+(defmethod evaluate ((expr unary))
+  (let* ((operator (slot-value expr 'operator))
+         (right (evaluate (slot-value expr 'right)))
+         (type (slot-value operator 'type)))
+
+    (case type
+      ('MINUS (progn
+                (check-number-operand operator right)
+                (- right)))
+      ('BANG (is-truthy right))
+
+      (t (error "unreachable")))))
+
+(defun is-equal (a b)
+  ;; we'll see if this is enough for lox
+  (equal a b))
+
+(defun check-number-operands (operator left right)
+  (if (not (and (numberp left) (numberp right)))
+      (lox-runtime-error operator "Operands must be numbers.")))
+
+(defmethod evaluate ((expr binary))
+  ;; Evaluate `left' first
+  (let* ((left (evaluate (slot-value expr 'left)))
+         (right (evaluate (slot-value expr 'right)))
+         (operator (slot-value expr 'operator))
+         (type (slot-value operator 'type)))
+
+    ;; DRY (better than wet)
+    (if (not (equal type 'PLUS))
+        (check-number-operands
+         operator left right))
+
+    (case type
+      ('MINUS (- left right))
+      ('SLASH (/ left right))
+      ('STAR  (* left right))
+      ('GREATER (> left right))
+      ('GREATER_EQUAL (>= left right))
+      ('LESS (< left right))
+      ('LESS_EQUAL (<= left right))
+      ('BANG_EQUAL (not (is-equal left right)))
+      ('EQUAL_EQUAL (is-equal left right))
+
+      ;; (over)loaded term
+      ('PLUS
+       (cond
+         ((and (stringp left) (stringp right))
+          (concatenate 'string left right))
+         ((and (numberp left) (numberp right))
+          (+ left right))
+         ((t) (lox-runtime-error operator "Y U no string? (or number)"))))
+
+      (t (error "unreachable")))))
+
+(defun stringify (obj)
+  ;; lox seems to match pretty closely `format' output
+  (format nil "~A" obj))
+
+;; AST in -> interpreted result out
+(defun interpret (expr)
+  (handler-case
+      (stringify (evaluate expr))
+    ;; we could use RESTART-CASE instead
+    (lox-runtime-error-condition () nil)))
+
+;; Interpreter.java end
+
 ;; tests
-(trace scan-token)
-(trace is-at-end)
-(trace advance)
+;; (trace scan-token)
+;; (trace is-at-end)
+;; (trace advance)
 (run "1 + (2 * 3)")
 (run "2 / 5 + 2 * 3")
 (run "2 +/ 3")
 (run "print")
 ;; FIXME: fix the quote escaping
+(setq *had-runtime-error* nil)
+(setq *had-error* nil)
 (run "print \"Hello Lox\";")

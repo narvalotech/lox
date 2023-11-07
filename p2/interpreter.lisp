@@ -341,6 +341,9 @@
 (defclass expr () ()
   (:documentation "Superclass for all possible LOX expressions"))
 
+(defclass stmt () ()
+  (:documentation "Superclass for all possible LOX statements"))
+
 (defun as-keyword (sym) (intern (string sym) :keyword))
 (defun slot->defclass-slot (spec)
   (let ((name (first spec))
@@ -355,6 +358,10 @@
   `(defclass ,name (expr)
      ,(mapcar #'slot->defclass-slot slots)))
 
+(defun def-stmt (name slots)
+  `(defclass ,name (stmt)
+     ,(mapcar #'slot->defclass-slot slots)))
+
 (defparameter *test2*
   '(binary
     ((left expr)
@@ -363,15 +370,15 @@
      (i-have-no-class))))
 (apply #'def-expr *test2*)
 
-(defmacro def-exprs (typelist)
-  "Create `expr' subclasses from a list"
+(defmacro def-subclasses (defclass-fn typelist)
+  "Create subclasses from a list and the class-making function."
   `(progn
      ,@(mapcar
-        (lambda (l) (apply #'def-expr l))
+        (lambda (l) (apply defclass-fn l))
         typelist)))
 
-;; Generate the classes
-(def-exprs
+;; Generate the expression classes
+(def-subclasses def-expr
     ((binary
       ((left expr)
        (operator token)
@@ -385,6 +392,15 @@
      (unary
       ((operator token)
        (right expr)))))
+
+;; Generate the statement classes
+(def-subclasses def-stmt
+    ((stmt-expression
+      ((expression expr)))
+
+     ;; just `print' violates the SBCL package lock
+     (stmt-print
+      ((expression expr)))))
 
 ;; `C-c I' to test if it works
 ;; (make-instance 'grouping)

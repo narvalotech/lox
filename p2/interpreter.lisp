@@ -390,7 +390,12 @@
 
      (unary
       ((operator token)
-       (right expr)))))
+       (right expr)))
+
+     ;; just `variable' violates the SBCL package lock
+     ;; TODO: decide & apply naming scheme to all expr classes
+     (expr-variable
+      ((name token)))))
 
 ;; Generate the statement classes
 (def-subclasses def-stmt
@@ -399,7 +404,11 @@
 
      ;; just `print' violates the SBCL package lock
      (stmt-print
-      ((expression expr)))))
+      ((expression expr)))
+
+     (stmt-var
+      ((name token)
+       (initializer expr)))))
 
 ;; `C-c I' to test if it works
 ;; (make-instance 'grouping)

@@ -64,13 +64,12 @@
   (let* ((scanner (make-instance 'scanner :source str))
          (tokens (scan-tokens scanner))
          (parser (make-instance 'parser :tokens tokens))
-         (expression (parser-parse parser)))
+         (statements (parser-parse-safe parser)))
     ;; do we need to handle *had-runtime-error*?
     ;; TODO: also make an `interpreter' instance like the java impl.
     (if (not *had-error*)
-        (format t "~%~A -> ~A~%"
-                (print-ast expression)
-                (interpret expression)))))
+        (format t "~%~A~%"
+                (interpret statements)))))
 
 (defun run-file (path)
   (run (read-file path))
@@ -540,12 +539,31 @@
 (defun parser-consume (type err-str prs)
   (if (parser-check type prs)
       (parser-advance prs)
-      (parser-error type err-str)))
+      (parser-error (parser-peek prs) err-str)))
+
+(defun print-statement (prs)
+  (let ((value (rule-expression prs)))
+    (parser-consume 'SEMICOLON "Expect ';' after value." prs)
+    (make-instance 'stmt-print :expression value)))
+
+(defun expression-statement (prs)
+  (let ((expr (rule-expression prs)))
+    (parser-consume 'SEMICOLON "Expect ';' after value." prs)
+    (make-instance 'stmt-expression :expression value)))
+
+(defun statement (prs)
+  (if (parser-match '(PRINT) prs)
+      (print-statement prs)
+      (expression-statement prs)))
 
 (defun parser-parse (prs)
+  (loop until (parser-is-at-end prs)
+        collect (statement prs)))
+
+(defun parser-parse-safe (prs)
   (handler-case
-      (rule-expression prs)
-    ;; we could use RESTART-CASE instead
+      (loop until (parser-is-at-end prs)
+            collect (statement prs))
     (parser-error-condition () nil)))
 
 (defun rule-primary (prs)
@@ -704,14 +722,25 @@
 
       (t (error "unreachable")))))
 
+(defgeneric evaluate (stmt)
+  (:documentation "Execute a statement."))
+
+(defmethod execute ((stmt stmt-expression))
+  (evaluate (slot-value stmt 'expression)))
+
+(defmethod execute ((stmt stmt-print))
+  (let ((value (evaluate (slot-value stmt 'expression))))
+    (format t "~A" value)))
+
 (defun stringify (obj)
   ;; lox seems to match pretty closely `format' output
   (format nil "~A" obj))
 
 ;; AST in -> interpreted result out
-(defun interpret (expr)
+(defun interpret (statements)
   (handler-case
-      (stringify (evaluate expr))
+      (loop for statement in statements do
+        (execute statement))
     ;; we could use RESTART-CASE instead
     (lox-runtime-error-condition () nil)))
 
@@ -722,9 +751,11 @@
 ;; (trace is-at-end)
 ;; (trace advance)
 (run "1 + (2 * 3)")
-(run "2 / 5 + 2 * 3")
+(run "2 / 5 + 2 * 3;")
 (run "2 +/ 3")
 (run "print")
 (setq *had-runtime-error* nil)
 (setq *had-error* nil)
 (run "print \"Hello Lox\";")
+
+;; TODO: try to run a script + an actual file

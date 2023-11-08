@@ -549,7 +549,7 @@
 (defun expression-statement (prs)
   (let ((expr (rule-expression prs)))
     (parser-consume 'SEMICOLON "Expect ';' after value." prs)
-    (make-instance 'stmt-expression :expression value)))
+    (make-instance 'stmt-expression :expression expr)))
 
 (defun statement (prs)
   (if (parser-match '(PRINT) prs)
@@ -750,12 +750,12 @@
 ;; (trace scan-token)
 ;; (trace is-at-end)
 ;; (trace advance)
-(run "1 + (2 * 3)")
-(run "2 / 5 + 2 * 3;")
+(run "print 1 + (2 * 3);")
+(run "2 / 5 + 2 * 3")
 (run "2 +/ 3")
 (run "print")
 (setq *had-runtime-error* nil)
 (setq *had-error* nil)
-(run "print \"Hello Lox\";")
-
-;; TODO: try to run a script + an actual file
+(run (format nil "print \"Hello Lox\" ~%; ~%print (1 + 2 / 3); 3+3;"))
+;; test from the book
+(run (format nil "print \"one\";~%print true;~%print 2 + 1;"))

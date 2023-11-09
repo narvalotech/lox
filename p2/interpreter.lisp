@@ -64,7 +64,7 @@
   (let* ((scanner (make-instance 'scanner :source str))
          (tokens (scan-tokens scanner))
          (parser (make-instance 'parser :tokens tokens))
-         (statements (parser-parse-safe parser)))
+         (statements (parser-parse parser)))
     ;; do we need to handle *had-runtime-error*?
     ;; TODO: also make an `interpreter' instance like the java impl.
     (if (not *had-error*)
@@ -501,6 +501,8 @@
   (if (not (parser-is-at-end prs))
       (equal type (slot-value (parser-peek prs) 'type))))
 
+;; TODO: standardize on passing 'self' as first params
+;; -> allows `types' to be &rest instead of list
 (defun parser-match (types prs)
   (loop for type in types do
     (if (parser-check type prs)
@@ -565,15 +567,27 @@
       (print-statement prs)
       (expression-statement prs)))
 
+(defun var-declaration (prs)
+  (let ((name (parser-consume 'IDENTIFIER "Expect variable name." prs))
+        (initializer nil))
+
+    (if (parser-match '(EQUAL) prs)
+        (setq initializer (expression-statement prs))
+        (parser-consume 'SEMICOLON "Expect ';' after variable declaration." prs))
+
+    (make-instance 'stmt-var :name name :initializer initializer)))
+
+(defun parser-declaration (prs)
+  (handler-case
+      (if (parser-match '(VAR) prs)
+          (var-declaration prs)
+          (statement prs))
+    (parser-error-condition ()
+      (progn (parser-synchronize prs) nil))))
+
 (defun parser-parse (prs)
   (loop until (parser-is-at-end prs)
-        collect (statement prs)))
-
-(defun parser-parse-safe (prs)
-  (handler-case
-      (loop until (parser-is-at-end prs)
-            collect (statement prs))
-    (parser-error-condition () nil)))
+        collect (parser-declaration prs)))
 
 (defun rule-primary (prs)
   (flet ((match (&rest types) (parser-match types prs))
@@ -585,6 +599,8 @@
       ((match 'NIL) (literal nil))
       ((match 'NUMBER 'STRING)
        (literal (slot-value (parser-previous prs) 'literal)))
+      ((match 'IDENTIFIER)
+       (make-instance 'expr-variable :name (parser-previous prs)))
       ((match 'LEFT-PAREN)
        (let ((expression (rule-expression prs)))
          (parser-consume 'RIGHT-PAREN "Expect ')' after expression." prs)
@@ -741,6 +757,17 @@
   (let ((value (evaluate (slot-value stmt 'expression))))
     (format t "~A" value)))
 
+(defmethod execute ((stmt stmt-var))
+  (let ((value nil)
+        (init (slot-value stmt 'initializer))
+        (lexeme (slot-value (slot-value stmt 'name) 'lexeme)))
+
+    (if init
+        (setq value (execute init)))
+
+    (env-define lexeme value *env*)
+    nil))
+
 (defun stringify (obj)
   ;; lox seems to match pretty closely `format' output
   (format nil "~A" obj))
@@ -755,6 +782,34 @@
 
 ;; Interpreter.java end
 
+;; Environment.java start
+
+(defclass environment ()
+  ((values :initform (make-hash-table :test 'equalp)))
+  (:documentation "Stores variable bindings."))
+
+(defun env-define (name value env)
+  (setf (gethash name (slot-value env 'values)) value))
+
+(defun env-get (name env)
+  ;; Here name is a 'token instance
+  ;; TODO: use `declare' to enforce this
+  (let* ((lexeme (slot-value name 'lexeme))
+         (values (slot-value env 'values))
+         (value (gethash lexeme values)))
+
+    (if value value
+        (error 'lox-runtime-error-condition
+               :token name
+               :message (format nil "Undefined variable '~A'." lexeme)))))
+
+(defmethod evaluate ((expr expr-variable))
+  (env-get (slot-value expr 'name) *env*))
+
+(defparameter *env* (make-instance 'environment))
+
+;; Environment.java end
+
 ;; tests
 ;; (trace scan-token)
 ;; (trace is-at-end)
@@ -768,3 +823,4 @@
 (run (format nil "print \"Hello Lox\" ~%; ~%print (1 + 2 / 3); 3+3;"))
 ;; test from the book
 (run (format nil "print \"one\";~%print true;~%print 2 + 1;"))
+(run "var a = 1; var b = 2; print a + b;")

@@ -378,7 +378,11 @@
 
 ;; Generate the expression classes
 (def-subclasses def-expr
-    ((binary
+    ((assign
+      ((name token)
+       (value expr)))
+
+     (binary
       ((left expr)
        (operator token)
        (right expr)))
@@ -511,8 +515,25 @@
           (return-from parser-match t))))
   nil)
 
+(defun rule-assignment (prs)
+  (let ((expr (rule-equality prs)))
+
+    (if (parser-match '(EQUAL) prs)
+
+        (let ((equals (parser-previous prs))
+              (value (rule-assignment prs)))
+
+          (if (typep expr 'expr-variable)
+
+              (let ((name (slot-value expr 'name)))
+                (return-from rule-assignment
+                  (make-instance 'assign :name name :value value))))
+
+          (parser-error equals "Invalid assignment target.")))
+    expr))
+
 (defun rule-expression (prs)
-  (rule-equality prs))
+  (rule-assignment prs))
 
 (defun parser-synchronize (prs)
   (parser-advance prs)
@@ -682,7 +703,7 @@
 
 (defun lox-runtime-error (token message)
   (with-slots (type line) token
-    (lox-report 'LOX-RUNTIME-ERROR line "" "runtime-error"))
+    (lox-report 'LOX-RUNTIME-ERROR line "" (format nil "runtime-error: ~A" message)))
 
   (error 'lox-runtime-error-condition
          :token token
@@ -786,6 +807,7 @@
   (:documentation "Stores variable bindings."))
 
 (defun env-define (name value env)
+  ;; here, `name' is a string
   (setf (gethash name (slot-value env 'values)) value))
 
 (defun env-get (name env)
@@ -800,8 +822,24 @@
                :token name
                :message (format nil "Undefined variable '~A'." lexeme)))))
 
+(defun env-assign (name value env)
+  ;; Here name is a 'token instance
+  ;; TODO: use `declare' to enforce this
+  (let ((lexeme (slot-value name 'lexeme))
+        (values (slot-value env 'values)))
+
+    (multiple-value-bind (current-val key-exists) (gethash lexeme values)
+      (declare (ignore current-val))
+      (if key-exists
+          (env-define lexeme value env)   ; returns the new value of `name'. i.e. `value'.
+          (lox-runtime-error name (format nil "Undefined variable '~A'." lexeme))))))
+
 (defmethod evaluate ((expr expr-variable))
   (env-get (slot-value expr 'name) *env*))
+
+(defmethod evaluate ((expr assign))
+  (with-slots (name value) expr
+    (env-assign name (evaluate value) *env*)))
 
 (defparameter *env* (make-instance 'environment))
 
@@ -812,7 +850,7 @@
 ;; (trace is-at-end)
 ;; (trace advance)
 (run "print 1 + (2 * 3);")
-(run "2 / 5 + 2 * 3")
+(run "2 / 5 + 2 * 3")                   ; missing semicolon
 (run "2 +/ 3")
 (run "print")
 (setq *had-runtime-error* nil)
@@ -821,3 +859,6 @@
 ;; test from the book
 (run (format nil "print \"one\";~%print true;~%print 2 + 1;"))
 (run "var a = 1; var b = 2; print a + b;")
+(run "var a = 1; var b = 2; b = 44; print a + b;")
+(run "b = 20; print a + b;")
+(run "c = 3;")                          ; undefined var

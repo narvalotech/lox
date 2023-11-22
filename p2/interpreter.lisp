@@ -667,8 +667,8 @@
   ;; We don't have a difference between `nil' and `null'.
   (if obj t nil))
 
-(defgeneric evaluate (expr)
-  (:documentation "Return the result of evaluating expr"))
+(defgeneric evaluate (stmt)
+  (:documentation "Execute a statement or expression."))
 
 (defmethod evaluate ((expr literal))
   (slot-value expr 'value))
@@ -746,9 +746,6 @@
          ((t) (lox-runtime-error operator "Y U no string? (or number)"))))
 
       (t (error "unreachable")))))
-
-(defgeneric evaluate (stmt)
-  (:documentation "Execute a statement."))
 
 (defmethod execute ((stmt stmt-expression))
   (evaluate (slot-value stmt 'expression)))

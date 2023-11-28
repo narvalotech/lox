@@ -123,7 +123,7 @@
 
 (defun advance (scn)
   (with-slots (start current source line) scn
-    (sleep .01)
+    (sleep .001)
     (char source (- (incf current) 1))))
 
 (defun peek (scn)
@@ -403,7 +403,10 @@
 
 ;; Generate the statement classes
 (def-subclasses def-stmt
-    ((stmt-expression
+    ((stmt-block
+      ((statements)))
+
+     (stmt-expression
       ((expression expr)))
 
      ;; just `print' violates the SBCL package lock
@@ -583,10 +586,23 @@
     (parser-consume 'SEMICOLON "Expect ';' after value." prs)
     (make-instance 'stmt-expression :expression expr)))
 
+(defun make-block (prs)
+  (let ((statements
+          (loop while
+                (and (not (parser-check 'RIGHT-BRACE prs))
+                     (not (parser-is-at-end prs)))
+                collect
+                (parser-declaration prs))))
+
+    (parser-consume 'RIGHT-BRACE "Expect '}' after block." prs)
+
+    statements))
+
 (defun statement (prs)
-  (if (parser-match '(PRINT) prs)
-      (print-statement prs)
-      (expression-statement prs)))
+  (cond ((parser-match '(PRINT) prs) (print-statement prs))
+        ((parser-match '(LEFT-BRACE) prs)
+         (make-instance 'stmt-block :statements (make-block prs)))
+        (t (expression-statement prs))))
 
 (defun var-declaration (prs)
   (let ((name (parser-consume 'IDENTIFIER "Expect variable name." prs))
@@ -773,7 +789,7 @@
 
 (defmethod execute ((stmt stmt-print))
   (let ((value (evaluate (slot-value stmt 'expression))))
-    (format t "~A" value)))
+    (format t "~A~%" value)))
 
 (defmethod execute ((stmt stmt-var))
   (let ((value nil)
@@ -785,6 +801,22 @@
 
     (env-define lexeme value *env*)
     nil))
+
+;; TODO: don't edit the *env* dynamic binding
+;; TODO: runtime errors don't print anymore? fix that
+(defun execute-block (statements env)
+  (let ((previous *env*))
+    (unwind-protect
+         (progn
+           (setf *env* env)
+           (dolist (statement statements)
+             (execute statement)))
+      (setf *env* previous))))
+
+(defmethod execute ((stmt stmt-block))
+  (execute-block (slot-value stmt 'statements)
+                 (make-instance 'environment :enclosing *env*))
+  nil)
 
 (defun stringify (obj)
   ;; lox seems to match pretty closely `format' output
@@ -803,7 +835,8 @@
 ;; Environment.java start
 
 (defclass environment ()
-  ((values :initform (make-hash-table :test 'equalp)))
+  ((values :initform (make-hash-table :test 'equalp))
+   (enclosing :initform nil :initarg :enclosing))
   (:documentation "Stores variable bindings."))
 
 (defun env-define (name value env)
@@ -813,9 +846,13 @@
 (defun env-get (name env)
   ;; Here name is a 'token instance
   ;; TODO: use `declare' to enforce this
-  (let* ((lexeme (slot-value name 'lexeme))
+  (let* ((parent-env (slot-value env 'enclosing))
+         (lexeme (slot-value name 'lexeme))
          (values (slot-value env 'values))
          (value (gethash lexeme values)))
+
+    (if (and (not value) parent-env)
+        (setf value (env-get name parent-env)))
 
     (if value value
         (error 'lox-runtime-error-condition
@@ -826,10 +863,16 @@
   ;; Here name is a 'token instance
   ;; TODO: use `declare' to enforce this
   (let ((lexeme (slot-value name 'lexeme))
+        (parent-env (slot-value env 'enclosing))
         (values (slot-value env 'values)))
 
     (multiple-value-bind (current-val key-exists) (gethash lexeme values)
       (declare (ignore current-val))
+
+      (if (and (not key-exists) parent-env)
+          (return-from env-assign
+            (env-define lexeme value parent-env)))
+
       (if key-exists
           (env-define lexeme value env)   ; returns the new value of `name'. i.e. `value'.
           (lox-runtime-error name (format nil "Undefined variable '~A'." lexeme))))))
@@ -862,3 +905,24 @@
 (run "var a = 1; var b = 2; b = 44; print a + b;")
 (run "b = 20; print a + b;")
 (run "c = 3;")                          ; undefined var
+(run "
+var a = \"global a\";
+var b = \"global b\";
+var c = \"global c\";
+{
+  var a = \"outer a\";
+  var b = \"outer b\";
+  {
+    var a = \"inner a\";
+    print a;
+    print b;
+    print c;
+  }
+  print a;
+  print b;
+  print c;
+}
+print a;
+print b;
+print c;
+")

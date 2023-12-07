@@ -409,6 +409,11 @@
      (stmt-expression
       ((expression expr)))
 
+     (stmt-if
+      ((condition expr)
+       (then-branch stmt)
+       (else-branch stmt)))
+
      ;; just `print' violates the SBCL package lock
      (stmt-print
       ((expression expr)))
@@ -598,8 +603,26 @@
 
     statements))
 
+(defun if-statement (prs)
+  (parser-consume 'LEFT-PAREN "Expect '(' after 'if'." prs)
+
+  (let ((condition (expression-statement prs)))
+    (parser-consume 'RIGHT-PAREN "Expect ')' after if condition." prs)
+
+    (let ((then-branch (statement prs))
+          (else-branch nil))
+
+      (if (parser-match '(ELSE) prs)
+          (setq else-branch (statement prs)))
+
+      (make-instance 'stmt-if
+                     :condition condition
+                     :then-branch then-branch
+                     :else-branch else-branch))))
+
 (defun statement (prs)
-  (cond ((parser-match '(PRINT) prs) (print-statement prs))
+  (cond ((parser-match '(IF) prs) (if-statement prs))
+        ((parser-match '(PRINT) prs) (print-statement prs))
         ((parser-match '(LEFT-BRACE) prs)
          (make-instance 'stmt-block :statements (make-block prs)))
         (t (expression-statement prs))))
@@ -801,6 +824,15 @@
 
     (env-define lexeme value *env*)
     nil))
+
+(defmethod execute ((stmt stmt-if))
+  (with-slots (condition then-branch else-branch) stmt
+    (cond
+      ((is-truthy (evaluate condition))
+       (execute then-branch))
+      (else-branch
+       (execute else-branch))
+      (t nil))))
 
 ;; TODO: don't edit the *env* dynamic binding
 (defun execute-block (statements env)

@@ -803,7 +803,6 @@
     nil))
 
 ;; TODO: don't edit the *env* dynamic binding
-;; TODO: runtime errors don't print anymore? fix that
 (defun execute-block (statements env)
   (let ((previous *env*))
     (unwind-protect
@@ -855,9 +854,9 @@
         (setf value (env-get name parent-env)))
 
     (if value value
-        (error 'lox-runtime-error-condition
-               :token name
-               :message (format nil "Undefined variable '~A'." lexeme)))))
+        (lox-runtime-error
+         name
+         (format nil "Undefined variable '~A'." lexeme)))))
 
 (defun env-assign (name value env)
   ;; Here name is a 'token instance
@@ -894,8 +893,8 @@
 ;; (trace advance)
 (run "print 1 + (2 * 3);")
 (run "2 / 5 + 2 * 3")                   ; missing semicolon
-(run "2 +/ 3")
-(run "print")
+(run "2 +/ 3")                          ; illegal expression
+(run "print")                           ; missing expr after print
 (setq *had-runtime-error* nil)
 (setq *had-error* nil)
 (run (format nil "print \"Hello Lox\" ~%; ~%print (1 + 2 / 3); 3+3;"))

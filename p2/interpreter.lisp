@@ -424,7 +424,11 @@
 
      (stmt-var
       ((name token)
-       (initializer expr)))))
+       (initializer expr)))
+
+     (stmt-while
+      ((condition expr)
+       (body stmt)))))
 
 ;; `C-c I' to test if it works
 ;; (make-instance 'grouping)
@@ -644,9 +648,20 @@
                      :then-branch then-branch
                      :else-branch else-branch))))
 
+(defun while-statement (prs)
+  (parser-consume 'LEFT-PAREN "Expect '(' after 'while'." prs)
+
+  (let ((condition (rule-expression prs)))
+    (parser-consume 'RIGHT-PAREN "Expect ')' after condition." prs)
+
+    (make-instance 'stmt-while
+                   :condition condition
+                   :body (statement prs))))
+
 (defun statement (prs)
   (cond ((parser-match '(IF) prs) (if-statement prs))
         ((parser-match '(PRINT) prs) (print-statement prs))
+        ((parser-match '(WHILE) prs) (while-statement prs))
         ((parser-match '(LEFT-BRACE) prs)
          (make-instance 'stmt-block :statements (make-block prs)))
         (t (expression-statement prs))))
@@ -873,6 +888,12 @@
        (execute else-branch))
       (t nil))))
 
+(defmethod execute ((stmt stmt-while))
+  (with-slots (condition body) stmt
+    (loop while (is-truthy (evaluate condition))
+          do (execute body)))
+  nil)
+
 ;; TODO: don't edit the *env* dynamic binding
 (defun execute-block (statements env)
   (let ((previous *env*))
@@ -999,3 +1020,11 @@ print c;
        (setq *had-error* nil))
 (run "print \"hi\" or 2;")
 (run "print nil or \"yes\";")
+(run "
+var a = 0;
+
+while (a < 10) {
+  print a;
+  a = a + 1;
+}
+")

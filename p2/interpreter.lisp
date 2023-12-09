@@ -22,7 +22,7 @@
     'IDENTIFIER 'STRING 'NUMBER
 
     ;; Keywords
-    'AND 'CLASS 'ELSE 'FALSE 'FUN 'FOR 'IF 'NIL 'OR
+    'AND 'CLASS 'ELSE 'FALSE 'FUN 'FOR 'IF 'C-NIL 'OR
     'PRINT 'RETURN 'SUPER 'THIS 'TRUE 'VAR 'WHILE
 
     'EOF
@@ -220,7 +220,7 @@
      ("for" FOR)
      ("fun" FUN)
      ("if" IF)
-     ("nil" NIL)
+     ("nil" C-NIL)
      ("or" OR)
      ("print" PRINT)
      ("return" RETURN)
@@ -392,6 +392,10 @@
 
      (literal ((value)))
 
+     (logical ((left expr)
+               (operator token)
+               (right expr)))
+
      (unary
       ((operator token)
        (right expr)))
@@ -523,8 +527,28 @@
           (return-from parser-match t))))
   nil)
 
+(defun rule-and (prs)
+  (let ((expression (rule-equality prs)))
+    (loop while (parser-match '(AND) prs) do
+      (setq expression
+            (make-instance 'logical
+                           :left expression
+                           :operator (parser-previous prs)
+                           :right (rule-equality prs))))
+    expression))
+
+(defun rule-or (prs)
+  (let ((expression (rule-and prs)))
+    (loop while (parser-match '(OR) prs) do
+      (setq expression
+            (make-instance 'logical
+                           :left expression
+                           :operator (parser-previous prs)
+                           :right (rule-and prs))))
+    expression))
+
 (defun rule-assignment (prs)
-  (let ((expr (rule-equality prs)))
+  (let ((expr (rule-or prs)))
 
     (if (parser-match '(EQUAL) prs)
 
@@ -656,7 +680,7 @@
       ;; TODO: do I need to distinguish between false and nil?
       ((match 'FALSE) (literal nil))
       ((match 'TRUE) (literal t))
-      ((match 'NIL) (literal nil))
+      ((match 'C-NIL) (literal nil))
       ((match 'NUMBER 'STRING)
        (literal (slot-value (parser-previous prs) 'literal)))
       ((match 'IDENTIFIER)
@@ -807,6 +831,21 @@
 
       (t (error "unreachable")))))
 
+(defmethod evaluate ((expr logical))
+  (with-slots (left operator right) expr
+    (let ((obj-left (evaluate left))
+          (op-type (slot-value operator 'type)))
+
+      (if (equal op-type 'OR)
+          (if (is-truthy obj-left)
+              (return-from evaluate obj-left))
+          ;; other op type (ie AND)
+          (if (not (is-truthy obj-left))
+              (return-from evaluate obj-left)))
+
+      (evaluate right))))
+
+
 (defmethod execute ((stmt stmt-expression))
   (evaluate (slot-value stmt 'expression)))
 
@@ -927,8 +966,6 @@
 (run "2 / 5 + 2 * 3")                   ; missing semicolon
 (run "2 +/ 3")                          ; illegal expression
 (run "print")                           ; missing expr after print
-(setq *had-runtime-error* nil)
-(setq *had-error* nil)
 (run (format nil "print \"Hello Lox\" ~%; ~%print (1 + 2 / 3); 3+3;"))
 ;; test from the book
 (run (format nil "print \"one\";~%print true;~%print 2 + 1;"))
@@ -957,3 +994,8 @@ print a;
 print b;
 print c;
 ")
+
+(progn (setq *had-runtime-error* nil)
+       (setq *had-error* nil))
+(run "print \"hi\" or 2;")
+(run "print nil or \"yes\";")

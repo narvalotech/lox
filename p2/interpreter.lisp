@@ -1067,8 +1067,12 @@ print b;
 print c;
 ")
 
-(progn (setq *had-runtime-error* nil)
-       (setq *had-error* nil))
+;; Clear environment and error flags
+(progn
+  (setq *env* (make-instance 'environment))
+  (setq *had-runtime-error* nil)
+  (setq *had-error* nil))
+
 (run "print \"hi\" or 2;")
 (run "print nil or \"yes\";")
 (run "

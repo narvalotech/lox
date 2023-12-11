@@ -658,8 +658,59 @@
                    :condition condition
                    :body (statement prs))))
 
+(defun for-statement (prs)
+  ;; very imperative, such wow
+  (parser-consume 'LEFT-PAREN "Expect '(' after 'for'." prs)
+
+  (let ((initializer)
+        (condition)
+        (increment)
+        (body))
+
+    (setq initializer
+          (cond ((parser-match '(SEMICOLON) prs) nil)
+                ((parser-match '(VAR) prs) (var-declaration prs))
+                (t (expression-statement prs))))
+
+    (setq condition
+          (if (not (parser-check 'SEMICOLON prs))
+              (rule-expression prs)
+              nil))
+
+    (parser-consume 'SEMICOLON "Expect ';' after loop condition." prs)
+
+    (setq increment
+          (if (not (parser-check 'RIGHT-PAREN prs))
+              (rule-expression prs)
+              nil))
+
+    (parser-consume 'RIGHT-PAREN "Expect ')' after for clauses." prs)
+
+    (setq body (statement prs))
+
+    (if increment
+        (setq body (make-instance 'stmt-block
+                                  :statements
+                                  (list body
+                                        (make-instance 'stmt-expression
+                                                       :expression increment)))))
+
+    (if (not condition)
+        (setq condition (make-instance 'literal :value t)))
+
+    (setq body (make-instance 'stmt-while
+                              :condition condition
+                              :body body))
+
+    (if initializer
+        (setq body (make-instance 'stmt-block
+                                  :statements (list initializer body))))
+
+    body))
+
 (defun statement (prs)
-  (cond ((parser-match '(IF) prs) (if-statement prs))
+  (cond ((parser-match '(FOR) prs) (for-statement prs))
+        ((parser-match '(IF) prs) (if-statement prs))
         ((parser-match '(PRINT) prs) (print-statement prs))
         ((parser-match '(WHILE) prs) (while-statement prs))
         ((parser-match '(LEFT-BRACE) prs)
@@ -1021,10 +1072,40 @@ print c;
 (run "print \"hi\" or 2;")
 (run "print nil or \"yes\";")
 (run "
-var a = 0;
+{
+var z = 0;
 
-while (a < 10) {
+while (z < 10) {
+  print z;
+  z = z + 1;
+}
+}
+")
+
+(run "
+for (var i = 0; i < 10; i = i + 1) {
+  print i;
+}
+")
+
+(run "
+{
+  var i = 0;
+  while (i < 10) {
+    print i;
+    i = i + 1;
+  }
+}
+")
+
+;; Fibonacci example from end of `control-flow' in book
+(run "
+var a = 0;
+var temp;
+
+for (var b = 1; a < 10000; b = temp + b) {
   print a;
-  a = a + 1;
+  temp = a;
+  a = b;
 }
 ")

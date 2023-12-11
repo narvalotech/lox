@@ -1013,7 +1013,7 @@
 
       (if (and (not key-exists) parent-env)
           (return-from env-assign
-            (env-define lexeme value parent-env)))
+            (env-assign name value parent-env)))
 
       (if key-exists
           (env-define lexeme value env)   ; returns the new value of `name'. i.e. `value'.

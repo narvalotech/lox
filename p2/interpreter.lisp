@@ -387,6 +387,11 @@
        (operator token)
        (right expr)))
 
+     (call
+      ((callee expr)
+       (paren token)
+       (arguments)))
+
      (grouping
       ((expression expr)))
 
@@ -757,12 +762,35 @@
          (make-instance 'grouping :expression expression)))
       (t (parser-error (parser-peek prs) "Expect expression.")))))
 
+(defun finish-call (callee prs)
+  (let ((arguments)
+        (paren))
+
+    ;; TODO: (maybe) limit to max 255 args
+    (if (not (parser-check 'RIGHT-PAREN prs))
+        (setf arguments
+              (loop collecting
+                    (rule-expression prs)
+                    while (parser-match '(COMMA) prs))))
+
+    (setf paren (parser-consume 'RIGHT-PAREN "Expect ')' after arguments." prs))
+
+    (make-instance 'call :callee callee :paren paren :arguments arguments)))
+
+(defun rule-call (prs)
+  (let ((expr (rule-primary prs)))
+
+    (loop while t do
+          (if (parser-match '(LEFT-PAREN) prs)
+              (setf expr (finish-call expr prs))
+              (return-from rule-call expr)))))
+
 (defun rule-unary (prs)
   (if (parser-match (list 'BANG 'MINUS) prs)
       (make-instance 'unary
                      :operator (parser-previous prs)
                      :right (rule-unary prs)))
-  (rule-primary prs))
+  (rule-call prs))
 
 ;; TODO: make a helper method for all this redundant code in
 ;; the binary rules/operators.
@@ -896,6 +924,27 @@
          ((t) (lox-runtime-error operator "Y U no string? (or number)"))))
 
       (t (error "unreachable")))))
+
+(defclass lox-callable ()
+  ((interpreter :initarg :interpreter)
+   (arguments :initarg :arguments)))
+
+(defun lox-call (fn args)
+  ;; TODO: implement
+  (format t "calling fn ~A with args ~A~%" fn args)
+  nil)
+
+(defmethod evaluate ((expr call))
+  (let* ((callee (evaluate (slot-value expr 'callee)))
+         (arguments
+           (loop for arg in (slot-value expr 'arguments)
+                 collect (evaluate arg))))
+
+    (if (not (typep callee 'lox-callable))
+        (lox-runtime-error (slot-value expr 'paren)
+                           (format nil "Can only call functions and classes.")))
+
+    (lox-call callee arguments)))
 
 (defmethod evaluate ((expr logical))
   (with-slots (left operator right) expr
